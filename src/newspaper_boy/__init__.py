@@ -5,4 +5,4 @@ load_dotenv()
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
-KEYWORDS = os.getenv("KEYWORDS").split(",")
+KEYWORDS = os.getenv("KEYWORDS")

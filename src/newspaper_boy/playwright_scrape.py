@@ -1,7 +1,5 @@
-import json
-import requests
 from typing import List, Dict, Any, Optional
-from datetime import date, timedelta
+from datetime import datetime, timezone
 import uuid
 import asyncio
 from urllib.parse import urlparse
@@ -11,7 +9,8 @@ from playwright.async_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 from newspaper_boy.types import Citation, TextChunk
-from newspaper_boy import SERPER_API_KEY, KEYWORDS
+from newspaper_boy.serper import serper_search
+from newspaper_boy import KEYWORDS
 
 
 async def fetch_article_content(
@@ -125,38 +124,25 @@ async def fetch_article_content(
         await context.close()
 
 
-def serper_search(query: str, num: int = 100) -> List[Dict[str, Any]]:
-    url = "https://google.serper.dev/search"
-    payload = json.dumps({"q": query, "num": num})
-    headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, data=payload, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    return data.get("organic", [])
-
-
-def build_query(
-    keywords: List[str],
-    country: str = "Canada",
-    after: date = date.today() - timedelta(days=1),
-) -> str:
-    after_str = after.strftime("%Y-%m-%d")
-    keyword_part = " ".join(keywords)
-    return f"{keyword_part} {country} after:{after_str}"
-
-
 async def scrape_news_playwright(
-    keywords: List[str] = KEYWORDS,
-    after: date = date.today() - timedelta(days=1),
-    max_results: int = 200,
+    citations: List[Citation],
+    *,
     delay: float = 2.0,
-    concurrency: int = 5,  # control how many tabs at once
+    concurrency: int = 5,
 ) -> List[Dict[str, Any]]:
-    query = build_query(keywords, after=after)
-    print(f"Query: {query}")
+    """
+    Enriches existing news citations with full text.
+    Only processes citations where source_type == "news"
+    Preserves original citation_id and metadata.
+    """
+    # Filter only news citations
+    news_citations = [
+        c for c in citations if c.get("media_type") == "text" and c.get("url")
+    ]
 
-    results = serper_search(query, num=max_results)
-    print(f"Found ~{len(results)} results from Serper")
+    if not news_citations:
+        print("No news citations to scrape.")
+        return []
 
     collected = []
     semaphore = asyncio.Semaphore(concurrency)
@@ -164,76 +150,96 @@ async def scrape_news_playwright(
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
 
-        async def process_item(item):
+        async def process_citation(original_citation: Citation):
             async with semaphore:
-                url = item["link"]
-                title_from_serper = item.get("title")
-                date_from_serper = item.get("date")
-                print(f"→ {url}")
+                citation = original_citation.copy()  # work on a mutable copy
+                url = citation["url"]
+                print(f"Scraping → {url}")
 
                 try:
                     text = await fetch_article_content(url, browser)
-                    if not text or len(text) < 300:
-                        print("   too short or failed to extract")
+                    if not text or len(text) < 400:
+                        print(
+                            f"   too short or failed ({len(text) if text else 0} chars)"
+                        )
                         return
 
-                    citation_id = str(uuid.uuid4())
+                    # Enhance title from page if missing or generic
+                    if not citation.get("title") or "Untitled" in citation.get(
+                        "title", ""
+                    ):
+                        context = await browser.new_context()
+                        page = await context.new_page()
+                        try:
+                            await page.goto(
+                                url, wait_until="domcontentloaded", timeout=15_000
+                            )
+                            page_title = await page.title()
+                            citation["title"] = page_title.strip() or citation["title"]
+                        except:
+                            pass
+                        finally:
+                            await context.close()
 
-                    # Try to get title from page if possible
-                    context = await browser.new_context()
-                    page = await context.new_page()
-                    try:
-                        await page.goto(
-                            url, wait_until="domcontentloaded", timeout=15_000
-                        )
-                        page_title = await page.title()
-                    except:
-                        page_title = title_from_serper
-                    finally:
-                        await context.close()
+                    # Add/enrich fields
+                    citation.update(
+                        {
+                            "media_type": citation.get(
+                                "source_type", "news"
+                            ),  # map source_type → media_type
+                            "publisher": citation.get("publisher")
+                            or urlparse(url).netloc.replace("www.", ""),
+                            "access_date": datetime.now(
+                                timezone.utc
+                            ),  # update to actual access time
+                            "jurisdiction": citation.get("jurisdiction") or "Canada",
+                            "metadata": {
+                                **(citation.get("metadata") or {}),
+                                "full_text_scraped": True,
+                                "scraped_word_count": len(text.split()),
+                                "serper_snippet": (
+                                    citation["metadata"].get("serper_snippet")
+                                    if citation.get("metadata")
+                                    else None
+                                ),
+                            },
+                        }
+                    )
 
-                    citation: Citation = {
-                        "citation_id": citation_id,
-                        "source_type": "news_article",
-                        "title": page_title or title_from_serper or "Untitled",
-                        "date": date_from_serper,
-                        "url": url,
-                        "access_date": date.today().isoformat(),
-                        "jurisdiction": "Canada",
-                        "publisher": urlparse(url).netloc,
-                        "author": None,  # could enhance later with meta tags
-                        "metadata": {"serper_snippet": item.get("snippet")},
-                    }
-
-                    # Split into paragraphs
+                    # Split into chunks
                     paragraphs = [
-                        p.strip() for p in text.split("\n\n") if len(p.strip()) > 50
+                        p.strip() for p in text.split("\n\n") if len(p.strip()) > 80
                     ]
 
                     chunks: List[TextChunk] = [
                         {
                             "textchunk_id": str(uuid.uuid4()),
-                            "citation_id": citation_id,
+                            "citation_id": citation["citation_id"],
                             "text": para,
                             "section": f"para_{i+1}",
+                            "char_start": sum(len(p) + 2 for p in paragraphs[:i]),
+                            "char_end": sum(len(p) + 2 for p in paragraphs[: i + 1]),
                         }
                         for i, para in enumerate(paragraphs)
                     ]
 
                     collected.append({"citation": citation, "chunks": chunks})
-                    print(f"   saved {len(paragraphs)} paragraphs")
+                    print(
+                        f"   saved {len(paragraphs)} paragraphs | {citation['title'][:60]}..."
+                    )
 
                 except Exception as e:
-                    print(f"   error: {e}")
+                    print(f"   error scraping {url}: {e}")
                 finally:
-                    await asyncio.sleep(delay)  # politeness delay
+                    await asyncio.sleep(delay)
 
-        # Run concurrently
-        tasks = [process_item(item) for item in results]
-        await asyncio.gather(*tasks, return_exceptions=False)
+        # Run all news citations concurrently
+        tasks = [process_citation(c) for c in news_citations]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         await browser.close()
 
+    print(f"Scraping complete: {len(collected)} articles enriched")
     return collected
 
 
