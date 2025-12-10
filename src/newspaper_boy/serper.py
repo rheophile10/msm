@@ -115,7 +115,7 @@ def _serper_results_to_citations(
                 "snippet": item.get("snippet"),
                 "imageUrl": item.get("imageUrl"),
             },
-            "media_type": source_type,
+            "media_type": media_type,
         }
 
         # Remove empty metadata dict
