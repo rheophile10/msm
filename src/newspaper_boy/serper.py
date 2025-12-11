@@ -170,7 +170,6 @@ def serper_search(
 
     def build_payload(page: int = 1) -> Dict[str, Any]:
         q = _build_query(raw_string, csv_or_list)
-        print(f"Serper search page {page} for query: {q}")
         payload = {
             "q": q,
             "gl": country,
@@ -232,5 +231,4 @@ def serper_search(
     citations = _serper_results_to_citations(
         all_results, source_type=search_type_str, exclude_publishers=exclude_publishers
     )
-    print(f"Retrieved {len(citations)} unique citations")
     return citations
