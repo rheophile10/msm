@@ -9,7 +9,12 @@ description = "get your news for a nickel"
 authors = [{ name = "NewsBoy" }]
 requires-python = ">=3.12"
 
-dependencies = ["requests>=2.31.0", "playwright", "python-dotenv>=1.0.0"]
+dependencies = [
+    "requests>=2.31.0",
+    "playwright",
+    "python-dotenv>=1.0.0",
+    "python-dateutil",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/newspaper_boy"]
