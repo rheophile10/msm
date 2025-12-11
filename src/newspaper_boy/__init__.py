@@ -12,5 +12,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 PACKAGE_ROOT = Path(__file__).resolve().parent
+
+
+def set_package_root(path: Path):
+    global PACKAGE_ROOT
+    PACKAGE_ROOT = path
+
+
 PROMPTS = PACKAGE_ROOT / "prompts.yaml"
 TASKS_PATH = PACKAGE_ROOT / "serper_tasks.yaml"
