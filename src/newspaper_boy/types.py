@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional, Dict, Any, Literal
+from typing import TypedDict, Optional, Dict, Any, Literal, List
 from enum import Enum
 from datetime import datetime
 
@@ -25,6 +25,7 @@ class SerperScrapeTask(TypedDict):
     language: str
     date_range: DateRangeStr
     max_page_count: int
+    exclude_publishers: List[str]
 
 
 class Citation(TypedDict):

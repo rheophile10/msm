@@ -73,6 +73,7 @@ def _serper_results_to_citations(
     source_type: str = "news",
     access_date: Optional[str] = None,
     reference_dt: Optional[datetime] = None,
+    exclude_publishers: Optional[List[str]] = [],
 ) -> List[Citation]:
     """
     Convert Serper results → Citation records with **normalized ISO datetime**.
@@ -122,7 +123,8 @@ def _serper_results_to_citations(
         if not any(citation["metadata"].values()):
             citation["metadata"] = None
 
-        citations.append(citation)
+        if publisher not in exclude_publishers:
+            citations.append(citation)
 
     return citations
 
@@ -136,6 +138,7 @@ def serper_search(
     language: str = "en",
     date_range: DateRangeStr = "past_day",  # ← now human readable!
     max_page_count: int = 1,
+    exclude_publishers: Optional[List[str]] = [],
 ) -> List[Citation]:
     """
     Example usage:
@@ -226,6 +229,8 @@ def serper_search(
 
         page += 1
 
-    citations = _serper_results_to_citations(all_results, source_type=search_type_str)
+    citations = _serper_results_to_citations(
+        all_results, source_type=search_type_str, exclude_publishers=exclude_publishers
+    )
     print(f"Retrieved {len(citations)} unique citations")
     return citations
