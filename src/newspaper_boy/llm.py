@@ -8,8 +8,6 @@ from newspaper_boy import openai_client, PROMPTS
 def filter_firearms_policy_citations(
     citations: List[Dict[str, Any]],
     *,
-    yaml_path: str = "prompt.yaml",
-    yaml_key: str = "filter_firearms_policy_citations",
     model: str = "gpt-4.1-mini",
 ) -> List[Dict[str, Any]]:
     """
@@ -21,11 +19,15 @@ def filter_firearms_policy_citations(
     with open(PROMPTS, "r", encoding="utf-8") as f:
         prompts = yaml.safe_load(f)
 
-    if yaml_key not in prompts:
-        raise KeyError(f"Key '{yaml_key}' not found in {PROMPTS}")
-    system_prompt = prompts[yaml_key]
+    system_prompt_key = "filter_firearms_policy_citations"
+    user_prompt_key = "filter_firearms_policy_citations_user"
 
-    # Reduce payload size
+    if system_prompt_key not in prompts:
+        raise KeyError(f"Key '{system_prompt_key}' not found in {PROMPTS}")
+    if user_prompt_key not in prompts:
+        raise KeyError(f"Key '{user_prompt_key}' not found in {PROMPTS}")
+    system_prompt = prompts[system_prompt_key]
+
     slim = [
         {
             "citation_id": c.get("citation_id"),
@@ -38,12 +40,8 @@ def filter_firearms_policy_citations(
         for c in citations
     ]
 
-    user_prompt = (
-        "Classify the following citations according to the system instructions.\n\n"
-        "Return ONLY JSON with this exact format:\n"
-        '{ "relevant_ids": ["V0001", "V0002"] }\n\n'
-        "Citations:\n"
-        f"{json.dumps(slim, ensure_ascii=False, indent=2)}"
+    user_prompt = prompts[user_prompt_key].replace(
+        "{citations_json}", f"{json.dumps(slim, ensure_ascii=False, indent=2)}"
     )
 
     response = openai_client.chat.completions.create(
@@ -60,9 +58,25 @@ def filter_firearms_policy_citations(
 
     try:
         data = json.loads(content)
-        relevant_ids = set(data.get("relevant_ids", []))
+        relevant_entries = data.get("relevant", [])
+        meta_by_id: Dict[str, Dict[str, Any]] = {}
+        for entry in relevant_entries:
+            cid = entry.get("citation_id")
+            if not cid:
+                continue
+            meta_by_id[cid] = {
+                "reason_for_ccfr": entry.get("reason_for_ccfr"),
+                "spiciness": entry.get("spiciness"),
+            }
     except Exception:
-        relevant_ids = set()
+        meta_by_id = {}
 
-    # Filter original data
-    return [c for c in citations if c.get("citation_id") in relevant_ids]
+    filtered: List[Dict[str, Any]] = []
+    for c in citations:
+        cid = c.get("citation_id")
+        if cid in meta_by_id:
+            merged = dict(c)
+            merged.update(meta_by_id[cid])
+            filtered.append(merged)
+
+    return filtered

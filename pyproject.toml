@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-dateutil",
     "openai",
+    "yaml",
 ]
 
 [tool.hatch.build.targets.wheel]

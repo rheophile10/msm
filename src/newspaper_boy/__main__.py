@@ -14,8 +14,6 @@ if __name__ == "__main__":
 
         filtered_citations = filter_firearms_policy_citations(
             serper_search_results,
-            yaml_path="prompt.yaml",
-            yaml_key="filter_firearms_policy_citations",
             model="gpt-4.1-mini",
         )
 
