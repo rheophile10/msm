@@ -4,9 +4,11 @@ from newspaper_boy.serper import serper_search
 from newspaper_boy.types import SerperScrapeTask
 from newspaper_boy.llm import filter_firearms_policy_citations
 from newspaper_boy.io import load_serper_scrape_tasks
+from datetime import datetime, date
 
 if __name__ == "__main__":
 
+    citations = []
     tasks = load_serper_scrape_tasks()
     for task in tasks:
         print(f"Serper Task: {task['raw_string']} -> {task['csv_or_list']}")
@@ -17,7 +19,17 @@ if __name__ == "__main__":
             model="gpt-4.1-mini",
         )
 
-        data = scrape_news(
-            filtered_citations,
-            concurrency=4,
-        )
+        citations.extend(filtered_citations)
+
+        # data = scrape_news(
+        #     filtered_citations,
+        #     concurrency=4,
+        # )
+
+    def json_serial(obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    with open("scraped_citations.json", "w", encoding="utf-8") as f:
+        json.dump(citations, f, ensure_ascii=False, indent=2, default=json_serial)
