@@ -232,3 +232,47 @@ def serper_search(
         all_results, source_type=search_type_str, exclude_publishers=exclude_publishers
     )
     return citations
+
+
+def de_dupe_citations(citations: List[Citation]) -> List[Citation]:
+    """
+    Remove duplicate citations based on URL.
+    Keeps the first occurrence.
+    """
+    seen_urls = set()
+    unique_citations = []
+    for citation in citations:
+        url = citation.get("url")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_citations.append(citation)
+    return unique_citations
+
+
+def total_serper_search_results(
+    raw_string: str = "",
+    csv_or_list: str = KEYWORDS,
+    country: Literal["ca", "us", "gb", "au", "de", "fr", "jp"] = "ca",
+    location: str = "Canada",
+    language: str = "en",
+    date_range: DateRangeStr = "past_day",  # ← now human readable!
+    max_page_count: int = 10,
+    exclude_publishers: Optional[List[str]] = [],
+) -> List[Citation]:
+    search_types = [SearchType.SEARCH, SearchType.NEWS, SearchType.VIDEO]
+    all_citations: List[Citation] = []
+    for stype in search_types:
+        citations = serper_search(
+            raw_string=raw_string,
+            csv_or_list=csv_or_list,
+            search_type=stype,
+            country=country,
+            location=location,
+            language=language,
+            date_range=date_range,
+            max_page_count=max_page_count,
+            exclude_publishers=exclude_publishers,
+        )
+        all_citations.extend(citations)
+    unique_citations = de_dupe_citations(all_citations)
+    return unique_citations

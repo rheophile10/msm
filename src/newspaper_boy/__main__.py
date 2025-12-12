@@ -1,6 +1,6 @@
 import json
 from newspaper_boy.playwright_scrape import scrape_news
-from newspaper_boy.serper import serper_search
+from newspaper_boy.serper import serper_search, total_serper_search_results
 from newspaper_boy.types import SerperScrapeTask
 from newspaper_boy.llm import filter_firearms_policy_citations
 from newspaper_boy.io import load_serper_scrape_tasks
@@ -8,28 +8,31 @@ from datetime import datetime, date
 
 if __name__ == "__main__":
 
-    citations = []
     tasks = load_serper_scrape_tasks()
-    for task in tasks:
-        print(f"Serper Task: {task['raw_string']} -> {task['csv_or_list']}")
-        serper_search_results = serper_search(**task)
+    citations = total_serper_search_results(**tasks[0])
+    print(f"Total citations from serper_search: {len(citations)}")
 
-        filtered_citations = filter_firearms_policy_citations(
-            serper_search_results,
-            model="gpt-4.1-mini",
-        )
+    # citations = []
+    # tasks = load_serper_scrape_tasks()
+    # for task in tasks:
+    #     serper_search_results = serper_search(**task)
 
-        citations.extend(filtered_citations)
+    #     filtered_citations = filter_firearms_policy_citations(
+    #         serper_search_results,
+    #         model="gpt-4.1-mini",
+    #     )
 
-        # data = scrape_news(
-        #     filtered_citations,
-        #     concurrency=4,
-        # )
+    #     citations.extend(filtered_citations)
 
-    def json_serial(obj):
-        if isinstance(obj, (datetime, date)):
-            return obj.isoformat()
-        raise TypeError(f"Type {type(obj)} not serializable")
+    #     # data = scrape_news(
+    #     #     filtered_citations,
+    #     #     concurrency=4,
+    #     # )
 
-    with open("scraped_citations.json", "w", encoding="utf-8") as f:
-        json.dump(citations, f, ensure_ascii=False, indent=2, default=json_serial)
+    # def json_serial(obj):
+    #     if isinstance(obj, (datetime, date)):
+    #         return obj.isoformat()
+    #     raise TypeError(f"Type {type(obj)} not serializable")
+
+    # with open("scraped_citations.json", "w", encoding="utf-8") as f:
+    #     json.dump(citations, f, ensure_ascii=False, indent=2, default=json_serial)
